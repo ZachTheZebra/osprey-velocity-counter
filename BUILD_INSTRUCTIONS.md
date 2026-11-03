@@ -17,13 +17,42 @@ This is a learning project. The contributor is an experienced engineering manage
 - **Failure mode**: Fail-open with alerting.
 - **Config style**: Raw environment variables with sane defaults (match existing Osprey Config singleton pattern). Design the storage interface so a future backend swap is possible.
 - **Formal methods**: Start with a TLA+ spec for the core invariants (no double-counted event IDs, window correctness, cleanup never deletes active ticks, thresholds only apply to the intended population). Use TLC to model-check. Spec is a design artifact + optional CI gate, not a hard requirement for the first PR.
+- **Hot keys**: Known failure mode — one entity's key can dominate Redis throughput. No built-in detection in v1; document the failure mode and add sampling metrics later if latency creep appears. Key splitting is the likely default fix if needed.
+
+## Audit, Legal Hold & Retention Layer
+
+### Snapshot on rule fire
+When a rule trips, the plugin captures a **snapshot** of the counter's state at that exact moment — not a live pointer. The counter keeps ticking after the violation, so the investigator needs the frozen evidence, not post-incident noise.
+
+Three Postgres tables:
+1. **Snapshot header** — when it fired, which rule, which entity, which key.
+2. **Ticks** — each row is one event ID and timestamp copied from the sorted set at capture time. This is the evidence. Index on entity and timestamp from day one; this table grows fast.
+3. **Hold** — entity type, entity ID, who placed it, when, status (open / confirmed / cleared), when released. Keyed on entity, not individual counter keys, because an investigation rarely cares about one behavior — it wants everything that entity touched across all behaviors.
+
+Order of operations on rule fire: read the full sorted set from Redis, write the header, write all ticks, place the hold. One burst before the next event moves the counter.
+
+### Automated action is optional
+Snapshot and hold are independent of enforcement. A rule can snapshot and hold with zero auto-action (flag for review only), auto-label or block with no snapshot (team trusts the rule), or do both — the common production setup: enforce immediately, preserve evidence for the appeal or audit that might come later. The hold exists precisely because auto-actions get wrong sometimes.
+
+### Manual hold creation
+Analysts must be able to place a hold before any threshold is crossed — on a hunch or a tip. Provide an explicit hold-creation API (UI or API call), separate from the rule-fire path.
+
+### Disposition and deletion
+After investigation: **confirmed** means keep per the org's retention schedule; **cleared** means delete the Postgres rows and lift the Redis hold. Actual retention periods, grace windows, and default dispositions are configurable via environment variables (same pattern as cleanup interval) — legal guidance varies by organization, so never hardcode them. Cleared is not instant: a grace window lets an appeal or second reviewer still pull the data before deletion.
+
+### Soft delete
+Deletion is soft first — mark rows as purged with a timestamp rather than physically removing them, in case legal later asks to prove destruction. The durable record kept after purge is only the deletion log: who, when, what was destroyed.
+
+### Legal hold mechanics
+The hold flag is stored in Postgres as the source of truth (a legal hold is exactly the kind of thing you cannot afford to lose), with a cached copy in Redis for the fast cleanup-check path. Cleanup logic checks the flag before removing old ticks from Redis keys matching a held entity.
 
 ## Recommended Phased Plan
 1. **TLA+ Spec** — Model the counter as a state machine under the entity-behavior key model. Invariants: no duplicate event IDs, ticks outside the window are eventually removed, claim-and-increment is atomic, thresholds only apply to the intended population. Run TLC until clean.
 2. **Redis Lua script** — Implement exactly what the spec proved (dedup + sliding-window ZADD + optional cleanup + population-aware key selection). Keep it short and dumb.
 3. **Osprey plugin packaging** — setup.py / pyproject.toml with entry point, register hook, and a thin Python wrapper that calls the Lua script. Mirror Osprey's pluggable label provider pattern.
-4. **Integration testing** — Run Osprey's Docker Compose demo locally. Feed synthetic events, assert counter behavior, and verify fail-open + alerting paths.
-5. **Draft PR** — Open early (skeleton + clear description is better than waiting for polish). Include the TLA+ spec as a design document with a plain-English summary of invariants.
+4. **Audit layer** — Postgres snapshot/hold/disposition tables, soft delete, configurable retention, explicit hold API.
+5. **Integration testing** — Run Osprey's Docker Compose demo locally. Feed synthetic events, assert counter behavior, verify fail-open + alerting paths, and test snapshot/hold/disposition flows.
+6. **Draft PR** — Open early (skeleton + clear description is better than waiting for polish). Include the TLA+ spec as a design document with a plain-English summary of invariants.
 
 ## Constraints & Style
 - Stay aligned with existing Osprey/ROOST patterns (lazy expiration, raw config values, pluggy hooks).
