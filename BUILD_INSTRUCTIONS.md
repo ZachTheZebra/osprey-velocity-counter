@@ -19,6 +19,9 @@ This is a learning project. The contributor is an experienced engineering manage
 - **Formal methods**: Start with a TLA+ spec for the core invariants (no double-counted event IDs, window correctness, cleanup never deletes active ticks, thresholds only apply to the intended population). Use TLC to model-check. Spec is a design artifact + optional CI gate, not a hard requirement for the first PR.
 - **Hot keys**: Known failure mode — one entity's key can dominate Redis throughput. No built-in detection in v1; document the failure mode and add sampling metrics later if latency creep appears. Key splitting is the likely default fix if needed.
 
+## Future Features (not v1)
+- **HyperLogLog distinct-count counters**: Velocity counts repetitions of the same behavior; HyperLogLog counts variety in an associated field (e.g. how many distinct IPs a user has logged in from). It never stores items — it hashes each value, tracks the longest run of leading zeros across buckets, and estimates cardinality from that with roughly 0.8% error at 16,384 buckets. Memory is fixed regardless of volume, versus an ever-growing Redis set. Revisit once the sliding-window velocity path is proven; not needed for the core plugin.
+
 ## Audit, Legal Hold & Retention Layer
 
 ### Snapshot on rule fire
@@ -41,7 +44,7 @@ Analysts must be able to place a hold before any threshold is crossed — on a h
 After investigation: **confirmed** means keep per the org's retention schedule; **cleared** means delete the Postgres rows and lift the Redis hold. Actual retention periods, grace windows, and default dispositions are configurable via environment variables (same pattern as cleanup interval) — legal guidance varies by organization, so never hardcode them. Cleared is not instant: a grace window lets an appeal or second reviewer still pull the data before deletion.
 
 ### Soft delete
-Deletion is soft first — mark rows as purged with a timestamp rather than physically removing them, in case legal later asks to prove destruction. The durable record kept after purge is only the deletion log: who, when, what was destroyed.
+Deletion is soft first — mark rows as purged with a timestamp rather than physically removing them, in case legal later asks you to prove destruction. The durable record kept after purge is only the deletion log: who, when, what was destroyed.
 
 ### Legal hold mechanics
 The hold flag is stored in Postgres as the source of truth (a legal hold is exactly the kind of thing you cannot afford to lose), with a cached copy in Redis for the fast cleanup-check path. Cleanup logic checks the flag before removing old ticks from Redis keys matching a held entity.
