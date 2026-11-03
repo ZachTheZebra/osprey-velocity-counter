@@ -55,15 +55,17 @@ The hold flag is stored in Postgres as the source of truth (a legal hold is exac
 3. **Osprey plugin packaging** — setup.py / pyproject.toml with entry point, register hook, and a thin Python wrapper that calls the Lua script. Mirror Osprey's pluggable label provider pattern.
 4. **Audit layer** — Postgres snapshot/hold/disposition tables, soft delete, configurable retention, explicit hold API.
 5. **Integration testing** — Run Osprey's Docker Compose demo locally. Feed synthetic events, assert counter behavior, verify fail-open + alerting paths, and test snapshot/hold/disposition flows.
-6. **Draft PR** — Open early (skeleton + clear description is better than waiting for polish). Include the TLA+ spec as a design document with a plain-English summary of invariants.
+6. **Benchmark (Redis vs Postgres)** — Controlled load test justifying the storage choice. Spin up Redis and Postgres instances, generate synthetic traffic at one thousand to ten thousand events per second, each event performing the dedup-plus-tick operation. For Postgres, simulate the row-lock pattern with SELECT FOR UPDATE or advisory locks. Measure p50, p95, p99 latency and sustained throughput until something breaks. Use redis-benchmark for Redis, pgbench or a small Python harness with asyncio for Postgres. Output: one chart of latency versus load for each store. This chart is the evidence in the PR that turns "Postgres is too slow" from an assertion into a measured argument. Include the methodology and raw numbers in the PR description.
+7. **Draft PR** — Open early (skeleton + clear description is better than waiting for polish). Include the TLA+ spec as a design document with a plain-English summary of invariants, plus the benchmark chart.
 
 ## Constraints & Style
 - Stay aligned with existing Osprey/ROOST patterns (lazy expiration, raw config values, pluggy hooks).
 - Prefer simple, configurable behavior over premature optimization.
 - Document assumptions and trade-offs in the PR description.
 - Open a draft PR as soon as the skeleton exists so design feedback can arrive early.
+- Never hardcode retention periods, grace windows, or dispositions — always configurable.
 
 ## Starting Point
-Begin with Phase 1 (TLA+ spec) under the entity-behavior key model. Once the invariants are proven, move to the Lua implementation. Do not jump to full plugin packaging until the core counting logic is solid and matches the spec.
+Begin with Phase 1 (TLA+ spec) under the entity-behavior key model. Once the invariants are proven, move to the Lua implementation. Do not jump to full plugin packaging until the core counting logic is solid and matches the spec. The benchmark (Phase 6) can run in parallel with Phases 3–5 since it only needs the operation pattern, not the full plugin.
 
 Repo: https://github.com/ZachTheZebra/osprey-velocity-counter
