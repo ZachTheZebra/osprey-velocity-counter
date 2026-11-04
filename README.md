@@ -33,3 +33,11 @@ python3 tests/test_plugin.py
 ```
 
 Docker is required. The script clones Osprey into `~/.cache/osprey-velocity-demo` and builds the worker image.
+
+A rule fire copies one key's sorted set into Postgres and places a hold on the entity. Later ticks stay out of that copy. Cleanup leaves the held entity's Redis ticks in place. An analyst can place a hold with no snapshot. `clear` keeps the rows for `VELOCITY_HOLD_GRACE` seconds. `confirm` keeps them for `VELOCITY_SNAPSHOT_RETENTION` seconds. After that the rows are marked purged and a deletion log records who destroyed them. There is no default for either duration.
+
+```bash
+python3 tests/test_audit.py
+```
+
+That test needs Docker and `psycopg`. It starts its own Postgres and Redis and stops them.

@@ -12,6 +12,11 @@ elseif op == "count" then
   local window = tonumber(ARGV[3])
   return redis.call("ZCOUNT", key, "(" .. tostring(now - window), now)
 elseif op == "cleanup" then
+  -- shortcut: an entity id that contains ":" is not this held entity, change the separator if that shows up
+  local entity = string.match(key, "^([^:]+:[^:]+):")
+  if entity and redis.call("EXISTS", "hold:" .. entity) == 1 then
+    return 0
+  end
   local now = tonumber(ARGV[2])
   local retention = tonumber(ARGV[3])
   return redis.call("ZREMRANGEBYSCORE", key, "-inf", now - retention)

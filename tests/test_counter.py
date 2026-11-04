@@ -115,6 +115,14 @@ class CounterTest(unittest.TestCase):
         self.assertEqual(restored, 1)
         self.assertEqual(self.redis.score(key, "1"), 1)
 
+    def test_cleanup_leaves_a_held_entity(self):
+        key = "user:user-1:message_sent"
+        self.redis.call(key, "apply", "1", 1)
+        self.redis.cli("SET", "hold:user:user-1", "1")
+        removed = self.redis.call(key, "cleanup", 3, 2)
+        self.assertEqual(removed, 0)
+        self.assertEqual(self.redis.score(key, "1"), 1)
+
     def test_a_crash_between_keys_leaves_the_finished_key(self):
         self.redis.call("user:user-1:message_sent", "apply", "1", 1)
         self.assertIsNone(self.redis.score("ip:ip-1:request", "1"))
