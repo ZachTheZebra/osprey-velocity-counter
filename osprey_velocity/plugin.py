@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
-# shortcut: loaded from the repo, not the installed wheel, bundle it when this is pip-installed elsewhere
-_SCRIPT = (Path(__file__).resolve().parents[1] / "lua" / "counter.lua").read_text()
+_SCRIPT = (Path(__file__).resolve().parent / "counter.lua").read_text()
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,42 @@ class RecordingContext:
 
     def __exit__(self, exc_type, exc, tb):
         return self._inner.__exit__(exc_type, exc, tb)
+
+
+def read_events(path):
+    events = []
+    for line in Path(path).read_text().splitlines():
+        if not line.strip():
+            continue
+        raw = json.loads(line)
+        raw["timestamp"] = datetime.fromisoformat(raw["timestamp"])
+        raw.setdefault("action_name", "message_sent")
+        events.append(raw)
+    return events
+
+
+class _FileAction:
+    def __init__(self, event):
+        self.action_id = event["action_id"]
+        self.action_name = event["action_name"]
+        self.timestamp = event["timestamp"]
+        self.data = event["data"]
+
+
+class _FileContext:
+    def __init__(self, action):
+        self._action = action
+
+    def __enter__(self):
+        return self._action
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def stream_from_jsonl(path, config, counter):
+    contexts = [_FileContext(_FileAction(event)) for event in read_events(path)]
+    return RecordingStream(iter(contexts), config, counter)
 
 
 class RecordingStream:

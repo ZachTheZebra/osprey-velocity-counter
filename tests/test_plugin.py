@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """The plugin chooses keys. The Lua script still stores one key."""
 
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -18,6 +21,7 @@ from osprey_velocity.plugin import (  # noqa: E402
     count,
     record,
     route,
+    stream_from_jsonl,
 )
 from test_counter import Redis  # noqa: E402
 
@@ -152,6 +156,54 @@ class RecordTest(unittest.TestCase):
             seen.append(action.action_id)
             self.assertEqual(counter.calls[0][1], "apply")
         self.assertEqual(seen, ["7"])
+
+    def test_a_jsonl_file_records_a_human_then_an_api_event(self):
+        flat = Config(
+            fields=(
+                Field("user_id", "user", "message_sent", True),
+                Field("ip", "ip", "request", False),
+            ),
+            traffic_source_path="traffic_source",
+            api_key_path="api_key",
+            retention=3600,
+        )
+        lines = [
+            {
+                "action_id": 1,
+                "action_name": "message_sent",
+                "timestamp": "2026-11-04T00:00:10+00:00",
+                "data": {"user_id": "42", "ip": "10.0.0.1"},
+            },
+            {
+                "action_id": 2,
+                "action_name": "message_sent",
+                "timestamp": "2026-11-04T00:00:12+00:00",
+                "data": {
+                    "user_id": "42",
+                    "ip": "10.0.0.1",
+                    "traffic_source": "api",
+                    "api_key": "bot-9",
+                },
+            },
+        ]
+        handle = tempfile.NamedTemporaryFile("w", delete=False)
+        handle.write("\n".join(json.dumps(line) for line in lines))
+        handle.close()
+        self.addCleanup(os.remove, handle.name)
+        counter = _Counter()
+        for context in stream_from_jsonl(handle.name, flat, counter):
+            with context:
+                pass
+        applied = [call[0] for call in counter.calls if call[1] == "apply"]
+        self.assertEqual(
+            applied,
+            [
+                "user:42:message_sent",
+                "ip:10.0.0.1:request",
+                "api-client:bot-9:message_sent",
+                "ip:10.0.0.1:request",
+            ],
+        )
 
 
 if __name__ == "__main__":

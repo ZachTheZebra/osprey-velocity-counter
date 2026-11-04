@@ -12,5 +12,8 @@ dependencies = ["redis>=5,<6"]
 [tool.setuptools.packages.find]
 include = ["osprey_velocity*"]
 
+[tool.setuptools.package-data]
+osprey_velocity = ["*.lua"]
+
 [project.entry-points.osprey_plugin]
 register_plugins = "osprey_velocity.register_plugins"

@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "lua" / "counter.lua"
+SCRIPT = ROOT / "osprey_velocity" / "counter.lua"
 
 
 def free_port():

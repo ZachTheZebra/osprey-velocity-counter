@@ -12,7 +12,7 @@ Run the model checker:
 
 Java 11 or newer is required. The script downloads the TLA+ tools on first run.
 
-`lua/counter.lua` is that counter for one Redis key. The caller chooses the key. `apply` stores the event id at its own timestamp and leaves an existing score alone. `count` returns how many stored timestamps sit inside `now - window < timestamp <= now`. `cleanup` deletes timestamps at or before `now - retention`.
+`osprey_velocity/counter.lua` is that counter for one Redis key. The caller chooses the key. `apply` stores the event id at its own timestamp and leaves an existing score alone. `count` returns how many stored timestamps sit inside `now - window < timestamp <= now`. `cleanup` deletes timestamps at or before `now - retention`.
 
 ```bash
 python3 tests/test_counter.py
@@ -26,4 +26,10 @@ The plugin chooses the keys and calls that script. Config is `VELOCITY_COUNTERS`
 python3 tests/test_plugin.py
 ```
 
-`RecordingStream` does not replace Osprey's Kafka source. Wrap the stream your own input hook already returns. The Docker demo wiring is not in this package yet.
+`RecordingStream` does not replace Osprey's Kafka source. Wrap the stream your own input hook already returns. The demo is separate: it sets `OSPREY_INPUT_STREAM_SOURCE=plugin` and `VELOCITY_EVENTS_FILE`, so this package reads two events from a file.
+
+```bash
+./demo/up.sh
+```
+
+Docker is required. The script clones Osprey into `~/.cache/osprey-velocity-demo` and builds the worker image.
