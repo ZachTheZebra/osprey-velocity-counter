@@ -11,3 +11,11 @@ Run the model checker:
 ```
 
 Java 11 or newer is required. The script downloads the TLA+ tools on first run.
+
+`lua/counter.lua` is that counter for one Redis key. The caller chooses the key. `apply` stores the event id at its own timestamp and leaves an existing score alone. `count` returns how many stored timestamps sit inside `now - window < timestamp <= now`. `cleanup` deletes timestamps at or before `now - retention`.
+
+```bash
+python3 tests/test_counter.py
+```
+
+`redis-server` must be on `PATH`. The test starts its own server and stops it.
