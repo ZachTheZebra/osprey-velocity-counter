@@ -90,16 +90,17 @@ Deliver(e) ==
 
 \* One key, one atomic step. The score is ts(e). A second apply does not
 \* replace it. There is no claimed-but-not-ticked state.
-Apply ==
-  /\ inflight # None
-  /\ inflight \in EventIds
-  /\ todo # {}
-  /\ \E k \in todo:
-       /\ ticks' = [ticks EXCEPT ![k] = ticks[k] \union {inflight}]
-       /\ recorded' = [recorded EXCEPT ![k] = recorded[k] \union {inflight}]
-       /\ todo' = todo \ {k}
-       /\ inflight' = IF (todo \ {k}) = {} THEN None ELSE inflight
+ApplyEventKey(e, k) ==
+  /\ e \in EventIds
+  /\ inflight = e
+  /\ k \in todo
+  /\ ticks' = [ticks EXCEPT ![k] = ticks[k] \union {inflight}]
+  /\ recorded' = [recorded EXCEPT ![k] = recorded[k] \union {inflight}]
+  /\ todo' = todo \ {k}
+  /\ inflight' = IF (todo \ {k}) = {} THEN None ELSE inflight
   /\ UNCHANGED <<population, now>>
+
+Apply == \E e \in EventIds : \E k \in Keys : ApplyEventKey(e, k)
 
 Crash ==
   /\ inflight # None
@@ -183,5 +184,21 @@ OneKeyPerStep ==
 
 PopulationStable ==
   [][UNCHANGED population]_vars
+
+\* Crash, AdvanceNow, and Cleanup are not fair. EventuallyClean is omitted:
+\* lazy cleanup may lag.
+\*
+\* Weak fairness on Deliver and Apply is not enough. A loop can crash
+\* before one key, then apply a different event's key, so Apply is taken
+\* and is not continuously enabled. Strong fairness on each event and on
+\* each event-key pair rules that loop out. Finite crashes are still
+\* allowed.
+FairSpec ==
+  /\ Spec
+  /\ \A e \in EventIds : SF_vars(Deliver(e))
+  /\ \A e \in EventIds : \A k \in Keys : SF_vars(ApplyEventKey(e, k))
+
+Completion ==
+  <>(\A e \in EventIds : \A k \in Route(e) : e \in recorded[k])
 
 =============================================================================
