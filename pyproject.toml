@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osprey-velocity-counter"
+version = "0.1.0"
+description = "Sliding-window velocity counters for Osprey"
+requires-python = ">=3.9"
+dependencies = ["redis>=5,<6"]
+
+[tool.setuptools.packages.find]
+include = ["osprey_velocity*"]
+
+[project.entry-points.osprey_plugin]
+register_plugins = "osprey_velocity.register_plugins"

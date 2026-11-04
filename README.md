@@ -19,3 +19,11 @@ python3 tests/test_counter.py
 ```
 
 `redis-server` must be on `PATH`. The test starts its own server and stops it.
+
+The plugin chooses the keys and calls that script. Config is `VELOCITY_COUNTERS`, a comma-separated list of `json.path:entity_type:behavior:1` where `1` means an API call rewrites that field to `api-client`. A missing field is skipped. A missing traffic-source stamp counts as a human visitor. `RecordingStream` records each event before the rules see it. `VelocityCount` only reads.
+
+```bash
+python3 tests/test_plugin.py
+```
+
+`RecordingStream` does not replace Osprey's Kafka source. Wrap the stream your own input hook already returns. The Docker demo wiring is not in this package yet.

@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""The plugin chooses keys. The Lua script still stores one key."""
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
+
+from osprey_velocity.plugin import (  # noqa: E402
+    Config,
+    Field,
+    RecordingStream,
+    RedisCounter,
+    config_from_env,
+    count,
+    record,
+    route,
+)
+from test_counter import Redis  # noqa: E402
+
+CONFIG = Config(
+    fields=(
+        Field("user.id", "user", "message_sent", True),
+        Field("ip", "ip", "request", False),
+    ),
+    traffic_source_path="traffic_source",
+    api_key_path="api_key",
+    retention=2,
+)
+
+HUMAN = {"user": {"id": 42}, "ip": "10.0.0.1"}
+API = {
+    "user": {"id": 42},
+    "ip": "10.0.0.1",
+    "traffic_source": "api",
+    "api_key": "bot-9",
+}
+
+
+class RouteTest(unittest.TestCase):
+    def test_human_visit_ticks_the_user_and_the_ip(self):
+        self.assertEqual(
+            route(HUMAN, CONFIG),
+            ["user:42:message_sent", "ip:10.0.0.1:request"],
+        )
+
+    def test_missing_traffic_source_counts_as_a_human(self):
+        self.assertEqual(route(dict(HUMAN), CONFIG), route(HUMAN, CONFIG))
+
+    def test_api_call_rewrites_only_the_marked_field(self):
+        self.assertEqual(
+            route(API, CONFIG),
+            ["api-client:bot-9:message_sent", "ip:10.0.0.1:request"],
+        )
+
+    def test_missing_field_is_skipped(self):
+        self.assertEqual(
+            route({"ip": "10.0.0.1"}, CONFIG),
+            ["ip:10.0.0.1:request"],
+        )
+
+    def test_api_call_without_a_key_skips_the_rewritten_field(self):
+        data = {"user": {"id": 42}, "ip": "10.0.0.1", "traffic_source": "API"}
+        self.assertEqual(route(data, CONFIG), ["ip:10.0.0.1:request"])
+
+    def test_config_comes_from_the_environment(self):
+        parsed = config_from_env(
+            {
+                "VELOCITY_COUNTERS": "user.id:user:message_sent:1,ip:ip:request:0",
+                "VELOCITY_TRAFFIC_SOURCE": "traffic_source",
+                "VELOCITY_API_KEY": "api_key",
+                "VELOCITY_RETENTION": "2",
+            }
+        )
+        self.assertEqual(parsed, CONFIG)
+
+
+class _Counter:
+    def __init__(self, fail_on=None):
+        self.calls = []
+        self.fail_on = fail_on
+
+    def call(self, key, op, *args):
+        if self.fail_on == (key, op):
+            raise RuntimeError("redis down")
+        self.calls.append((key, op, args))
+        return 1
+
+
+class RecordTest(unittest.TestCase):
+    def test_a_failed_key_is_finished_by_the_retry(self):
+        counter = _Counter(fail_on=("ip:10.0.0.1:request", "apply"))
+        with self.assertRaises(RuntimeError):
+            record("1", 10, HUMAN, CONFIG, counter)
+        self.assertEqual(
+            counter.calls,
+            [
+                ("user:42:message_sent", "apply", ("1", 10)),
+                ("user:42:message_sent", "cleanup", (10, 2)),
+            ],
+        )
+        counter.fail_on = None
+        record("1", 10, HUMAN, CONFIG, counter)
+        self.assertEqual(
+            [call[0] for call in counter.calls if call[1] == "apply"],
+            ["user:42:message_sent", "user:42:message_sent", "ip:10.0.0.1:request"],
+        )
+
+    def test_record_stores_the_event_time_and_count_ignores_an_expired_tick(self):
+        server = Redis()
+        self.addCleanup(server.close)
+        import redis
+
+        counter = RedisCounter(redis.Redis(host="127.0.0.1", port=server.port))
+        record("1", 1, HUMAN, CONFIG, counter)
+        record("2", 3, HUMAN, CONFIG, counter)
+        self.assertEqual(count("user", "42", "message_sent", 2, 3, counter), 1)
+        redis = server
+        self.assertIsNone(redis.score("user:42:message_sent", "1"))
+        self.assertEqual(redis.score("user:42:message_sent", "2"), 3)
+
+    def test_the_stream_records_before_the_caller_sees_the_action(self):
+        seen = []
+
+        class Action:
+            action_id = "7"
+            timestamp = 10
+            data = HUMAN
+
+        class Context:
+            def __enter__(self):
+                return Action()
+
+            def __exit__(self, *args):
+                return False
+
+        class Inner:
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if seen:
+                    raise StopIteration
+                return Context()
+
+        counter = _Counter()
+        stream = RecordingStream(Inner(), CONFIG, counter)
+        with next(stream) as action:
+            seen.append(action.action_id)
+            self.assertEqual(counter.calls[0][1], "apply")
+        self.assertEqual(seen, ["7"])
+
+
+if __name__ == "__main__":
+    unittest.main()
