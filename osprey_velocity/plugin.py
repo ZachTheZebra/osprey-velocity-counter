@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 _SCRIPT = (Path(__file__).resolve().parent / "counter.lua").read_text()
+_LOG = logging.getLogger("osprey_velocity")
 
 
 @dataclass(frozen=True)
@@ -88,13 +90,22 @@ def record(event_id, timestamp, data, config, counter):
     """Apply each routed key. A raised call leaves the later keys for the retry."""
     tick = _time(timestamp)
     for key in route(data, config):
-        counter.call(key, "apply", str(event_id), tick)
-        counter.call(key, "cleanup", tick, config.retention)
+        try:
+            counter.call(key, "apply", str(event_id), tick)
+            counter.call(key, "cleanup", tick, config.retention)
+        except Exception:
+            _LOG.exception("velocity record failed for %s", key)
+            raise
 
 
 def count(entity_type, entity_id, behavior, window, now, counter):
+    """A store error counts as zero so a rule does not fire on a blind read."""
     key = str(entity_type) + ":" + str(entity_id) + ":" + str(behavior)
-    return counter.call(key, "count", _time(now), int(window))
+    try:
+        return counter.call(key, "count", _time(now), int(window))
+    except Exception:
+        _LOG.exception("velocity count failed open for %s", key)
+        return 0
 
 
 class RedisCounter:

@@ -95,10 +95,25 @@ class _Counter:
 
 
 class RecordTest(unittest.TestCase):
+    def test_count_returns_zero_and_alerts_when_redis_is_down(self):
+        counter = _Counter(fail_on=("user:42:message_sent", "count"))
+        with self.assertLogs("osprey_velocity", level="ERROR") as logs:
+            self.assertEqual(count("user", "42", "message_sent", 10, 12, counter), 0)
+        self.assertIn("user:42:message_sent", logs.output[0])
+
+    def test_a_failed_record_alerts_and_still_raises(self):
+        counter = _Counter(fail_on=("user:42:message_sent", "apply"))
+        with self.assertLogs("osprey_velocity", level="ERROR") as logs:
+            with self.assertRaises(RuntimeError):
+                record("1", 10, HUMAN, CONFIG, counter)
+        self.assertIn("user:42:message_sent", logs.output[0])
+        self.assertEqual(counter.calls, [])
+
     def test_a_failed_key_is_finished_by_the_retry(self):
         counter = _Counter(fail_on=("ip:10.0.0.1:request", "apply"))
-        with self.assertRaises(RuntimeError):
-            record("1", 10, HUMAN, CONFIG, counter)
+        with self.assertLogs("osprey_velocity", level="ERROR"):
+            with self.assertRaises(RuntimeError):
+                record("1", 10, HUMAN, CONFIG, counter)
         self.assertEqual(
             counter.calls,
             [

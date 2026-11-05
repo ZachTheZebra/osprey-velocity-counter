@@ -20,7 +20,7 @@ python3 tests/test_counter.py
 
 `redis-server` must be on `PATH`. The test starts its own server and stops it.
 
-The plugin chooses the keys and calls that script. Config is `VELOCITY_COUNTERS`, a comma-separated list of `json.path:entity_type:behavior:1` where `1` means an API call rewrites that field to `api-client`. A missing field is skipped. A missing traffic-source stamp counts as a human visitor. `RecordingStream` records each event before the rules see it. `VelocityCount` only reads.
+The plugin chooses the keys and calls that script. Config is `VELOCITY_COUNTERS`, a comma-separated list of `json.path:entity_type:behavior:1` where `1` means an API call rewrites that field to `api-client`. A missing field is skipped. A missing traffic-source stamp counts as a human visitor. `RecordingStream` records each event before the rules see it. `VelocityCount` only reads. A Redis error on that read returns 0 and logs an error, so the rule does not fire blind. A Redis error on the write is logged and raised, so the delivery can retry the unfinished key.
 
 ```bash
 python3 tests/test_plugin.py
