@@ -41,3 +41,9 @@ python3 tests/test_audit.py
 ```
 
 That test needs Docker and `psycopg`. It starts its own Postgres and Redis and stops them.
+
+`bench/harness.py` offers the same dedup-and-tick to Redis and to Postgres. On the run in `bench/results.md`, Redis stayed near the offered rate through 10,000 events per second, with p99 under 25 ms. Postgres kept up through 5,000 per second. At 10,000 per second its p99 was over a second. `redis-benchmark` and `pgbench` do not run this operation, so the harness does.
+
+```bash
+python3 bench/harness.py
+```
