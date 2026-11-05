@@ -1,3 +1,5 @@
 # Working notes stay on this machine. The public repo is the showcase.
 BUILD_INSTRUCTIONS.md
 docs/superpowers/
+.tools/
+.demo/

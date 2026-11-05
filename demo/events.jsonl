@@ -1,0 +1,2 @@
+{"action_id": 1, "action_name": "message_sent", "timestamp": "2026-11-04T00:00:10+00:00", "data": {"user_id": "42", "ip": "10.0.0.1"}}
+{"action_id": 2, "action_name": "message_sent", "timestamp": "2026-11-04T00:00:12+00:00", "data": {"user_id": "42", "ip": "10.0.0.1", "traffic_source": "api", "api_key": "bot-9"}}

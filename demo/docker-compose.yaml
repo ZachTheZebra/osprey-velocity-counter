@@ -1,0 +1,40 @@
+# Redis plus one Osprey worker. The worker reads demo/events.jsonl and exits.
+# OSPREY_DIR is a checkout of https://github.com/roostorg/osprey
+services:
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  worker:
+    build:
+      context: ${OSPREY_DIR}
+      dockerfile: osprey_worker/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      OSPREY_INPUT_STREAM_SOURCE: plugin
+      OSPREY_EXECUTION_RESULT_STORAGE_BACKEND: none
+      OSPREY_STDOUT_OUTPUT_SINK: "true"
+      OSPREY_RULES_PATH: /velocity/rules
+      OSPREY_RULES_SINK_NUM_WORKERS: "1"
+      DD_TRACE_ENABLED: "false"
+      DD_DOGSTATSD_DISABLE: "true"
+      VELOCITY_EVENTS_FILE: /velocity/events.jsonl
+      VELOCITY_COUNTERS: user_id:user:message_sent:1,ip:ip:request:0
+      VELOCITY_TRAFFIC_SOURCE: traffic_source
+      VELOCITY_API_KEY: api_key
+      VELOCITY_RETENTION: "3600"
+      VELOCITY_EMPTY_LABELS: "1"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./events.jsonl:/velocity/events.jsonl:ro
+      - ./rules:/velocity/rules:ro
+      - ./check.py:/velocity/check.py:ro
+      - ./run-worker.sh:/velocity/run-worker.sh:ro
+      - ..:/velocity/plugin:ro
+    entrypoint: ["/bin/bash", "/velocity/run-worker.sh"]
